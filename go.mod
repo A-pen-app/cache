@@ -1,6 +1,6 @@
 module github.com/A-pen-app/cache
 
-go 1.21.5
+go 1.21
 
 require (
 	github.com/dgraph-io/ristretto v0.1.1
