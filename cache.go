@@ -18,6 +18,8 @@ import (
 
 var cacheManager *cache.Cache[string]
 var keyPrefix string
+var cacheType Type
+var redisClient *redis.Client
 
 const defaultPrefix = "default"
 
@@ -60,16 +62,17 @@ func Initialize(c *Config) {
 		if len(c.RedisURL) == 0 {
 			panic(fmt.Errorf("initialization with redis needs redis url"))
 		}
-		rdb := redis.NewClient(&redis.Options{
+		redisClient = redis.NewClient(&redis.Options{
 			Addr: c.RedisURL,
 		})
-		cacheStore = redis_store.NewRedis(rdb)
+		cacheStore = redis_store.NewRedis(redisClient)
 	default:
 		panic(fmt.Errorf("unknown cache type"))
 
 	}
 	cacheManager = cache.New[string](cacheStore)
 	keyPrefix = c.Prefix
+	cacheType = c.Type
 }
 
 func Finalize() {}
@@ -118,4 +121,85 @@ func Get(ctx context.Context, key string, container interface{}) error {
 
 func Delete(ctx context.Context, key string) error {
 	return cacheManager.Delete(ctx, compose(key))
+}
+
+// MGet retrieves multiple values of the same type from the cache in a single operation.
+// For Redis backend, this uses a single MGET call for efficiency.
+// For local cache, this falls back to sequential Get calls.
+// Returns:
+//   - results: map of key -> value for keys that were found and successfully unmarshaled
+//   - notFound: slice of keys that were not found in the cache
+//   - err: error if the operation failed entirely
+func MGet[T any](ctx context.Context, keys []string) (results map[string]T, notFound []string, err error) {
+	results = make(map[string]T)
+	notFound = make([]string, 0)
+
+	if len(keys) == 0 {
+		return results, notFound, nil
+	}
+
+	if cacheType == TypeRedis && redisClient != nil {
+		return mgetRedis[T](ctx, keys)
+	}
+
+	// Fallback for local cache: sequential gets
+	for _, key := range keys {
+		var val T
+		if err := Get(ctx, key, &val); err == nil {
+			results[key] = val
+		} else if err == ErrorNotFound {
+			notFound = append(notFound, key)
+		} else {
+			// On error, treat as not found but continue
+			notFound = append(notFound, key)
+		}
+	}
+
+	return results, notFound, nil
+}
+
+func mgetRedis[T any](ctx context.Context, keys []string) (results map[string]T, notFound []string, err error) {
+	results = make(map[string]T)
+	notFound = make([]string, 0)
+
+	// Compose keys with prefix
+	composedKeys := make([]string, len(keys))
+	keyMap := make(map[string]string) // composedKey -> originalKey
+	for i, key := range keys {
+		composed := compose(key)
+		composedKeys[i] = composed
+		keyMap[composed] = key
+	}
+
+	// Use Redis MGET
+	vals, err := redisClient.MGet(ctx, composedKeys...).Result()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Process results
+	for i, val := range vals {
+		originalKey := keyMap[composedKeys[i]]
+		if val == nil {
+			notFound = append(notFound, originalKey)
+			continue
+		}
+
+		// val is the raw string stored in Redis
+		strVal, ok := val.(string)
+		if !ok {
+			notFound = append(notFound, originalKey)
+			continue
+		}
+
+		var result T
+		if err := unmarshal([]byte(strVal), &result); err != nil {
+			notFound = append(notFound, originalKey)
+			continue
+		}
+
+		results[originalKey] = result
+	}
+
+	return results, notFound, nil
 }
