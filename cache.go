@@ -75,7 +75,12 @@ func Initialize(c *Config) {
 	cacheType = c.Type
 }
 
-func Finalize() {}
+func Finalize() {
+	if redisClient != nil {
+		redisClient.Close()
+		redisClient = nil
+	}
+}
 
 func compose(key string) string {
 	return keyPrefix + ":" + key
