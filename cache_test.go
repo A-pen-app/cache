@@ -58,8 +58,10 @@ func TestMSetWithTTLRedis(t *testing.T) {
 		t.Fatalf("MGet = %#v", got)
 	}
 
-	if ttl := mr.TTL("test:a"); ttl != time.Minute {
-		t.Fatalf("TTL = %v, want 1m", ttl)
+	for _, key := range []string{"test:a", "test:b"} {
+		if ttl := mr.TTL(key); ttl != time.Minute {
+			t.Fatalf("TTL(%s) = %v, want 1m", key, ttl)
+		}
 	}
 }
 
@@ -67,5 +69,29 @@ func TestMSetWithTTLEmpty(t *testing.T) {
 	setupRedis(t, 0)
 	if err := MSetWithTTL(context.Background(), nil, time.Minute); err != nil {
 		t.Fatalf("MSetWithTTL(nil): %v", err)
+	}
+}
+
+func TestMSetWithTTLLocal(t *testing.T) {
+	Initialize(&Config{Prefix: "test", Type: TypeLocal})
+	ctx := context.Background()
+
+	if err := MSetWithTTL(ctx, map[string]interface{}{"a": []string{"x"}, "b": []string{"y", "z"}}, time.Minute); err != nil {
+		t.Fatalf("MSetWithTTL: %v", err)
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		got, err := MGet[[]string](ctx, []string{"a", "b"})
+		if err != nil {
+			t.Fatalf("MGet: %v", err)
+		}
+		if len(got[0]) == 1 && got[0][0] == "x" && len(got[1]) == 2 && got[1][1] == "z" {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("MGet = %#v, want both keys written", got)
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }
