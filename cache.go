@@ -35,6 +35,7 @@ type Config struct {
 	Prefix   string
 	Type     Type
 	RedisURL string
+	PoolSize int
 }
 
 func Initialize(c *Config) {
@@ -63,7 +64,8 @@ func Initialize(c *Config) {
 			panic(fmt.Errorf("initialization with redis needs redis url"))
 		}
 		redisClient = redis.NewClient(&redis.Options{
-			Addr: c.RedisURL,
+			Addr:     c.RedisURL,
+			PoolSize: c.PoolSize,
 		})
 		cacheStore = redis_store.NewRedis(redisClient)
 	default:
@@ -112,6 +114,38 @@ func SetWithTTL(ctx context.Context, key string, value interface{}, ttl time.Dur
 		return err
 	}
 	return cacheManager.Set(ctx, compose(key), string(data), store.WithExpiration(ttl))
+}
+
+func MSetWithTTL(ctx context.Context, values map[string]interface{}, ttl time.Duration) error {
+	if len(values) == 0 {
+		return nil
+	}
+
+	encoded := make(map[string]string, len(values))
+	for key, value := range values {
+		data, err := marshal(value)
+		if err != nil {
+			return fmt.Errorf("marshal failed for key %s: %w", key, err)
+		}
+		encoded[key] = string(data)
+	}
+
+	if cacheType == TypeRedis && redisClient != nil {
+		_, err := redisClient.Pipelined(ctx, func(pipe redis.Pipeliner) error {
+			for key, data := range encoded {
+				pipe.Set(ctx, compose(key), data, ttl)
+			}
+			return nil
+		})
+		return err
+	}
+
+	for key, data := range encoded {
+		if err := cacheManager.Set(ctx, compose(key), data, store.WithExpiration(ttl)); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func Get(ctx context.Context, key string, container interface{}) error {

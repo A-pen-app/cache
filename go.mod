@@ -3,6 +3,7 @@ module github.com/A-pen-app/cache
 go 1.21
 
 require (
+	github.com/alicebob/miniredis/v2 v2.31.0
 	github.com/dgraph-io/ristretto v0.1.1
 	github.com/eko/gocache/lib/v4 v4.1.5
 	github.com/eko/gocache/store/redis/v4 v4.2.1
@@ -11,6 +12,7 @@ require (
 )
 
 require (
+	github.com/alicebob/gopher-json v0.0.0-20200520072559-a9ecdc9d1d3a // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
@@ -24,6 +26,7 @@ require (
 	github.com/prometheus/client_model v0.3.0 // indirect
 	github.com/prometheus/common v0.37.0 // indirect
 	github.com/prometheus/procfs v0.8.0 // indirect
+	github.com/yuin/gopher-lua v1.1.0 // indirect
 	golang.org/x/exp v0.0.0-20230315142452-642cacee5cc0 // indirect
 	golang.org/x/sys v0.5.0 // indirect
 	google.golang.org/protobuf v1.28.1 // indirect
